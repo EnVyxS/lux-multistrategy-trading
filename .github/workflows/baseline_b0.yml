@@ -1,0 +1,178 @@
+name: baseline_b0
+
+# Satu pecahan per jalan. Cakram runner ~14 GB, satu pecahan ~3,8-4,3 GB dalam
+# tiga bagian tar, jadi semesta penuh TIDAK PERNAH dalam satu job.
+#
+# Gerbang byte WAJIB: `sha256sum -c SHA256SUMS` (saksi 1, alat GNU) DAN
+# `lux_ms.dataset.gerbang_sidik` (saksi 2, hasil ukur sesi ini). Bila salah satu
+# gagal, job gagal dan tidak ada angka hasil yang ditulis.
+#
+# Masukan dibaca dari GITHUB_EVENT_PATH dengan jq, bukan dari interpolasi, supaya
+# tidak ada nilai operator yang menyusup ke dalam skrip shell.
+
+on:
+  workflow_dispatch:
+    inputs:
+      indeks:
+        description: "indeks pecahan 0..7"
+        required: true
+        default: "7"
+      batas_simbol:
+        description: "0 = semua simbol pecahan itu"
+        required: true
+        default: "3"
+      min_rr:
+        description: "WAJIB; nilai legacy per-strategi BELUM DIUKUR"
+        required: true
+        default: "1.5"
+      min_gap_r:
+        description: "WAJIB"
+        required: true
+        default: "1.0"
+      fallback_rr:
+        description: "WAJIB"
+        required: true
+        default: "2.5"
+
+permissions:
+  contents: write
+
+jobs:
+  ukur:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      TOKEN_LINTAS: ${{ secrets.LINTAS_REPO_TOKEN }}
+      TOKEN_BAWAAN: ${{ secrets.GITHUB_TOKEN }}
+      ID_RUN: ${{ github.run_id }}
+      SHA_COMMIT: ${{ github.sha }}
+      REPO_SUMBER: EnVyxS/lux-ai-research
+      RUN_SERAPAN: "30396803601"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Pasang dependensi dan tegakkan batasan lingkungan
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install numpy pandas pyarrow pyyaml pytest
+          python - <<'PY'
+          import importlib.util
+          for m in ("scipy", "requests"):
+              if importlib.util.find_spec(m) is not None:
+                  raise SystemExit(f"PELANGGARAN LINGKUNGAN: {m} terpasang")
+          print("lingkungan sesuai: tanpa scipy, tanpa requests")
+          PY
+
+      - name: Uji harness harus lulus SEBELUM data diunduh
+        run: |
+          set -euo pipefail
+          pytest -q tests
+
+      - name: Cakram sebelum unduh
+        run: df -h /
+
+      - name: Unduh aset rilis pecahan
+        run: |
+          set -euo pipefail
+          INDEKS=$(jq -r '.inputs.indeks' "$GITHUB_EVENT_PATH")
+          case "$INDEKS" in 0|1|2|3|4|5|6|7) ;; *) echo "indeks di luar 0..7: $INDEKS"; exit 1 ;; esac
+          TAG="serapan-pecahan-${INDEKS}-${RUN_SERAPAN}"
+          echo "tag=$TAG"
+          if [ -n "${TOKEN_LINTAS:-}" ]; then
+            export GH_TOKEN="$TOKEN_LINTAS"
+            echo "token: LINTAS_REPO_TOKEN"
+          else
+            export GH_TOKEN="$TOKEN_BAWAAN"
+            echo "token: GITHUB_TOKEN bawaan (hanya cukup bila $REPO_SUMBER publik)"
+          fi
+          mkdir -p data/rilis
+          if ! gh release download "$TAG" --repo "$REPO_SUMBER" --dir data/rilis --pattern 'serapan_pecahan_*' --pattern 'SHA256SUMS' --clobber; then
+            echo "GAGAL UNDUH: bila $REPO_SUMBER privat, sediakan secret LINTAS_REPO_TOKEN (scope repo). Tidak ada jalur 'anggap benar'." >&2
+            exit 1
+          fi
+          ls -l data/rilis
+          echo "INDEKS=$INDEKS" >> "$GITHUB_ENV"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Saksi 1 - sha256sum -c SHA256SUMS
+        run: |
+          set -euo pipefail
+          cd data/rilis
+          test -f SHA256SUMS || { echo "SHA256SUMS tidak ada"; exit 1; }
+          cat SHA256SUMS
+          sha256sum -c SHA256SUMS
+          sha256sum SHA256SUMS
+
+      - name: Saksi 2 - gerbang_sidik, bongkar, dan ukur B0
+        run: |
+          set -euo pipefail
+          MIN_RR=$(jq -r '.inputs.min_rr' "$GITHUB_EVENT_PATH")
+          MIN_GAP=$(jq -r '.inputs.min_gap_r' "$GITHUB_EVENT_PATH")
+          FB=$(jq -r '.inputs.fallback_rr' "$GITHUB_EVENT_PATH")
+          BATAS=$(jq -r '.inputs.batas_simbol' "$GITHUB_EVENT_PATH")
+          python ukur_b0.py \
+            --indeks "$INDEKS" \
+            --akar-rilis data/rilis \
+            --akar-bongkar . \
+            --batas-simbol "$BATAS" \
+            --min-rr "$MIN_RR" \
+            --min-gap-r "$MIN_GAP" \
+            --fallback-rr "$FB" \
+            --hapus-tar \
+            --keluaran "reports/b0_pecahan${INDEKS}_status.json"
+
+      - name: Cakram dan cacah parquet setelah bongkar
+        if: always()
+        run: |
+          df -h / || true
+          find data/parquet -name '*.parquet' 2>/dev/null | wc -l || true
+
+      - name: Tulis penanda jalan dan simpan laporan
+        if: always()
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, pathlib
+          p = pathlib.Path("reports")
+          p.mkdir(parents=True, exist_ok=True)
+          isi = {
+              "bukan_bukti": False,
+              "alur": "baseline_b0",
+              "run_id": os.environ.get("ID_RUN"),
+              "commit": os.environ.get("SHA_COMMIT"),
+              "tag": os.environ.get("TAG"),
+              "indeks": os.environ.get("INDEKS"),
+              "nilai_basi_yang_ditolak": {
+                  "run": "30628719235",
+                  "commit": "95021cda",
+                  "blob": "fedd1e89",
+              },
+              "status_angka": (
+                  "Isi reports/ hanya sah bila kedua saksi sidik LULUS. Angka B0 "
+                  "adalah BATAS ATAS: gerbang trendline_min_htf_score=3 belum "
+                  "diport dan SL memakai PENDEKATAN_B0."
+              ),
+              "patokan": "EnVyxS/lux-multistrategy-trading",
+          }
+          (p / "b0_jalan_terakhir.json").write_text(
+              json.dumps(isi, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+              encoding="utf-8",
+          )
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add reports
+          git commit -m "reports: laporan baseline_b0 pecahan ${INDEKS:-?} [skip ci]" || echo "tidak ada perubahan"
+          git push || echo "push gagal; laporan tetap ada di artefak"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: laporan-baseline-b0
+          path: reports/
+          if-no-files-found: warn
