@@ -1,0 +1,18 @@
+{
+  "catatan": "Berkas pemicu. Mendorong berkas ini memicu .github/workflows/baseline_b0.yml lewat 'on: push: paths'. Pola ini disalin dari EnVyxS/lux-ai-research .github/workflows/pecahan_serapan.yml, yang menulis di komentarnya sendiri bahwa agen tidak punya alat memicu workflow_dispatch. Hasil dikembalikan sebagai commit ke reports/ dengan [skip ci], jadi bisa dibaca lewat pembacaan berkas biasa.",
+  "permintaan_ke": 1,
+  "diminta_pada_utc": "2026-07-31T19:30:00Z",
+  "indeks": "7",
+  "batas_simbol": "3",
+  "min_rr": "1.5",
+  "min_gap_r": "1.0",
+  "fallback_rr": "2.5",
+  "status_parameter": "min_rr / min_gap_r / fallback_rr di sini adalah NILAI UJI YANG DIPRA-REGISTRASI, BUKAN nilai legacy. Nilai legacy per-strategi (_min_rr_eff, settings.min_tp_gap_r, _fallback_rr) masih BELUM DIUKUR dan tidak boleh ditebak.",
+  "status_hasil": "Angka apa pun dari jalan ini adalah BATAS ATAS: gerbang trendline_min_htf_score=3 sudah diport di lux_ms/htf.py tetapi BELUM disambungkan ke pindai_b0, dan SL masih PENDEKATAN_B0.",
+  "nilai_basi_yang_ditolak": {
+    "run": "30628719235",
+    "commit": "95021cda",
+    "blob": "fedd1e89"
+  },
+  "patokan": "EnVyxS/lux-multistrategy-trading"
+}
