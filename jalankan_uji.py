@@ -1,46 +1,35 @@
-"""Pelari uji polos: menjalankan seluruh fungsi test_* tanpa pytest.
-
-Alasan ada: sandbox pengembangan TIDAK memuat pytest (terukur sesi ini:
-`python3 -m pytest` -> "No module named pytest"). CI GitHub Actions tetap
-memakai pytest; berkas ini adalah cadangan yang harus memberi hasil sama.
-
-Pemakaian: python3 jalankan_uji.py
-Keluar dengan kode 1 bila ada satu pun GAGAL.
-"""
+"""Pelari uji minimal (sandbox tanpa pytest). Di CI, pytest yang dipakai."""
 import importlib
 import sys
 import traceback
 
-MODUL_UJI = (
+sys.path.insert(0, "/data/ms")
+
+MODUL = [
     "tests.test_tangan",
     "tests.test_antilookahead",
     "tests.test_statistik",
-)
+    "tests.test_baseline_b0",
+]
 
+lulus = gagal = 0
+for nama in MODUL:
+    try:
+        m = importlib.import_module(nama)
+    except Exception:
+        print(f"[IMPORT GAGAL] {nama}")
+        traceback.print_exc()
+        gagal += 1
+        continue
+    for fn in sorted(d for d in dir(m) if d.startswith("test_")):
+        try:
+            getattr(m, fn)()
+            print(f"LULUS  {nama}.{fn}")
+            lulus += 1
+        except Exception as e:
+            print(f"GAGAL  {nama}.{fn}: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            gagal += 1
 
-def main() -> int:
-    sys.path.insert(0, ".")
-    lulus, gagal = 0, 0
-    for nama_modul in MODUL_UJI:
-        m = importlib.import_module(nama_modul)
-        for nama in sorted(dir(m)):
-            if not nama.startswith("test_"):
-                continue
-            fn = getattr(m, nama)
-            if not callable(fn):
-                continue
-            try:
-                fn()
-            except Exception:
-                gagal += 1
-                print(f"GAGAL {nama_modul}.{nama}")
-                traceback.print_exc()
-            else:
-                lulus += 1
-                print(f"LULUS {nama_modul}.{nama}")
-    print(f"=== LULUS {lulus} | GAGAL {gagal} ===")
-    return 1 if gagal else 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+print(f"\n=== LULUS {lulus} | GAGAL {gagal} ===")
+sys.exit(1 if gagal else 0)
