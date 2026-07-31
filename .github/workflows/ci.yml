@@ -1,6 +1,23 @@
 name: ci
 
-# Dipasang PALING AKHIR agar jalan pertama kali sudah atas pohon berkas LENGKAP.
+# CACAT YANG DIPERBAIKI DI v2 (semuanya TERUKUR, bukan dugaan):
+#
+# 1. `pytest -q tests | tee reports_pytest.txt` membuat kode keluar langkah
+#    menjadi kode keluar `tee` (0), sebab bash di sini TIDAK memakai pipefail.
+#    Akibatnya kegagalan pytest tidak pernah menggagalkan job. Terbukti pada run
+#    baseline_b0 30659603431: `pytest -q tests` gagal mengumpulkan kelima berkas
+#    uji dengan `ModuleNotFoundError: No module named 'lux_ms'` dan kode 2.
+# 2. Laporan menulis `status_angka: "TERUKUR di CI"` hanya dari cocokan regex
+#    keluaran PELARI POLOS. Jadi label itu pernah dipasang pada keadaan di mana
+#    saksi pytest sesungguhnya GAGAL TOTAL. Angka 58 sendiri berasal dari pelari
+#    polos dan tetap sah sebagai angka pelari polos, tetapi klaim "kedua saksi
+#    sepakat" TIDAK PERNAH TERUKUR sebelum v2.
+# 3. `bacaan_ci_ke` ditulis mati sebagai 85, sehingga pencacah tidak pernah
+#    maju: bacaan 85 tertulis dua kali (run 30658939176 dan 30659601549).
+#    Sekarang pencacah disimpan di reports/bacaan_ci.json dan maju sendiri.
+#    Bacaan 85 dinyatakan TERPAKAI (dua kali, dengan status tercemar), jadi
+#    bacaan berikutnya adalah 86.
+#
 # paths-ignore mengikuti kebiasaan repo riset: dokumen tidak memicu CI.
 on:
   push:
@@ -21,6 +38,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -28,47 +47,146 @@ jobs:
 
       - name: Pasang pustaka (TANPA scipy, TANPA requests)
         run: |
+          set -euo pipefail
           python -m pip install --upgrade pip
           pip install numpy pandas pyarrow pyyaml pytest
           python - <<'PY'
-          import importlib
+          import importlib.util
           for m in ("scipy", "requests"):
-              try:
-                  importlib.import_module(m)
-              except ImportError:
-                  print(f"OK: {m} tidak terpasang")
-              else:
+              if importlib.util.find_spec(m) is not None:
                   raise SystemExit(f"PELANGGARAN LINGKUNGAN: {m} terpasang")
+              print(f"OK: {m} tidak terpasang")
           PY
 
-      - name: Gerbang 1 + Gerbang 2 (pytest)
-        id: pytest
-        run: pytest -q tests | tee reports_pytest.txt
+      - name: Saksi 1 - pytest (kode keluar direkam, TIDAK ditelan pipa)
+        run: |
+          set +e
+          pytest -q tests > reports_pytest.txt 2>&1
+          KODE_PYTEST=$?
+          set -e
+          echo "KODE_PYTEST=$KODE_PYTEST" >> "$GITHUB_ENV"
+          tail -c 20000 reports_pytest.txt
+          echo "kode_pytest=$KODE_PYTEST"
 
-      - name: Pelari polos harus sepakat dengan pytest
-        run: python jalankan_uji.py | tee reports_polos.txt
+      - name: Saksi 2 - pelari polos (kode keluar direkam)
+        run: |
+          set +e
+          python jalankan_uji.py > reports_polos.txt 2>&1
+          KODE_POLOS=$?
+          set -e
+          echo "KODE_POLOS=$KODE_POLOS" >> "$GITHUB_ENV"
+          tail -c 20000 reports_polos.txt
+          echo "kode_polos=$KODE_POLOS"
 
-      - name: Tulis reports/ci_terakhir.json
+      - name: Tulis reports/ci_terakhir.json (pencacah maju dari berkas)
         if: always()
         run: |
+          set -euo pipefail
           mkdir -p reports
           python - <<'PY'
-          import json, os, re, pathlib
-          polos = pathlib.Path("reports_polos.txt")
-          teks = polos.read_text() if polos.exists() else ""
-          m = re.search(r"=== LULUS (\d+) \| GAGAL (\d+) ===", teks)
+          import json, os, pathlib, re
+
+          akar = pathlib.Path("reports")
+          akar.mkdir(parents=True, exist_ok=True)
+
+          def teks(nama):
+              p = pathlib.Path(nama)
+              return p.read_text(encoding="utf-8", errors="replace") if p.exists() else ""
+
+          t_pytest = teks("reports_pytest.txt")
+          t_polos = teks("reports_polos.txt")
+
+          m_polos = re.search(r"=== LULUS (\d+) \| GAGAL (\d+) ===", t_polos)
+          lulus_polos = int(m_polos.group(1)) if m_polos else None
+          gagal_polos = int(m_polos.group(2)) if m_polos else None
+
+          m_lulus_pytest = re.search(r"(\d+) passed", t_pytest)
+          m_gagal_pytest = re.search(r"(\d+) failed", t_pytest)
+          m_error_pytest = re.search(r"(\d+) errors? during collection", t_pytest)
+          lulus_pytest = int(m_lulus_pytest.group(1)) if m_lulus_pytest else None
+          gagal_pytest = int(m_gagal_pytest.group(1)) if m_gagal_pytest else None
+          error_kumpul_pytest = int(m_error_pytest.group(1)) if m_error_pytest else None
+
+          def kode(nama):
+              v = os.environ.get(nama)
+              try:
+                  return int(v)
+              except (TypeError, ValueError):
+                  return None
+
+          kode_pytest = kode("KODE_PYTEST")
+          kode_polos = kode("KODE_POLOS")
+
+          sepakat = (
+              kode_pytest == 0
+              and kode_polos == 0
+              and lulus_pytest is not None
+              and lulus_polos is not None
+              and lulus_pytest == lulus_polos
+              and not gagal_polos
+              and not gagal_pytest
+              and not error_kumpul_pytest
+          )
+
+          p_cacah = akar / "bacaan_ci.json"
+          if p_cacah.exists():
+              berikutnya = int(json.loads(p_cacah.read_text(encoding="utf-8"))["berikutnya"])
+          else:
+              berikutnya = 86
+          bacaan_ini = berikutnya
+          p_cacah.write_text(
+              json.dumps(
+                  {
+                      "berikutnya": bacaan_ini + 1,
+                      "terakhir_dipakai": bacaan_ini,
+                      "catatan": (
+                          "Bacaan 85 TERPAKAI dua kali (run 30658939176 dan "
+                          "30659601549) karena ci.yml v1 menulis pencacah mati. "
+                          "Kedua bacaan itu berstatus TERCEMAR: label 'TERUKUR di "
+                          "CI' dipasang padahal saksi pytest gagal impor."
+                      ),
+                  },
+                  ensure_ascii=False,
+                  indent=2,
+              )
+              + "\n",
+              encoding="utf-8",
+          )
+
+          if sepakat:
+              status = "TERUKUR di CI (kedua saksi sepakat)"
+          elif lulus_polos is not None:
+              status = (
+                  "TERCEMAR: angka ini hanya dari pelari polos; saksi pytest "
+                  "tidak lulus atau tidak sepakat. JANGAN dikutip sebagai hasil CI."
+              )
+          else:
+              status = "BELUM DIUKUR"
+
           data = {
-              "bacaan_ci_ke": 85,
+              "bacaan_ci_ke": bacaan_ini,
               "run_id": os.environ.get("GITHUB_RUN_ID"),
               "commit": os.environ.get("GITHUB_SHA"),
-              "lulus": int(m.group(1)) if m else None,
-              "gagal": int(m.group(2)) if m else None,
-              "status_angka": "TERUKUR di CI" if m else "BELUM DIUKUR",
+              "saksi_pytest": {
+                  "kode_keluar": kode_pytest,
+                  "lulus": lulus_pytest,
+                  "gagal": gagal_pytest,
+                  "error_pengumpulan": error_kumpul_pytest,
+              },
+              "saksi_polos": {
+                  "kode_keluar": kode_polos,
+                  "lulus": lulus_polos,
+                  "gagal": gagal_polos,
+              },
+              "sepakat": sepakat,
+              "lulus": lulus_polos,
+              "gagal": gagal_polos,
+              "status_angka": status,
               "patokan": "EnVyxS/lux-multistrategy-trading",
               "catatan": "nilai BASI yang WAJIB DITOLAK: run 30628719235, commit 95021cda, blob fedd1e89",
           }
-          pathlib.Path("reports/ci_terakhir.json").write_text(
-              json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+          (akar / "ci_terakhir.json").write_text(
+              json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
           )
           print(json.dumps(data, ensure_ascii=False))
           PY
@@ -80,14 +198,30 @@ jobs:
           name: laporan-ci
           path: |
             reports/ci_terakhir.json
+            reports/bacaan_ci.json
             reports_pytest.txt
             reports_polos.txt
 
-      - name: Commit reports/ci_terakhir.json (tidak memicu CI lagi)
+      - name: Commit reports/ (tidak memicu CI lagi)
         if: always()
         run: |
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
-          git add reports/ci_terakhir.json
+          git add reports/ci_terakhir.json reports/bacaan_ci.json
           git diff --staged --quiet || git commit -m 'ci: reports/ci_terakhir.json [skip ci]'
-          git push || true
+          for percobaan in 1 2 3 4; do
+            git pull --rebase --autostash && git push && break
+            sleep $((percobaan * 5))
+          done
+
+      - name: Vonis - job GAGAL bila salah satu saksi gagal atau keduanya tak sepakat
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, sys
+          d = json.loads(pathlib.Path("reports/ci_terakhir.json").read_text(encoding="utf-8"))
+          if not d.get("sepakat"):
+              print(json.dumps(d, ensure_ascii=False, indent=2))
+              sys.exit("GAGAL: kedua saksi uji tidak sepakat; angka apa pun dari jalan ini TERCEMAR.")
+          print(f"kedua saksi sepakat pada {d['lulus']} uji lulus; bacaan CI ke-{d['bacaan_ci_ke']}")
+          PY
