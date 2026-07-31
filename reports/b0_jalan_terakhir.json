@@ -1,7 +1,8 @@
 {
   "alur": "baseline_b0",
   "bukan_bukti": false,
-  "commit": "6fb147c38956de3e0ac73404ac2b19fa8411d85e",
+  "cacah_baris_jejak": 84,
+  "commit": "bb943ec34af1e67fc165efa21c1ccabd2b979bef",
   "indeks": "7",
   "kode_keluar_ukur": null,
   "nilai_basi_yang_ditolak": {
@@ -16,8 +17,9 @@
     "min_rr": "1.5"
   },
   "patokan": "EnVyxS/lux-multistrategy-trading",
-  "run_id": "30659250441",
+  "run_id": "30659603431",
   "status_angka": "Isi reports/ hanya sah bila kedua saksi sidik LULUS. Angka B0 masih BATAS ATAS: gerbang trendline_min_htf_score=3 sudah diport di lux_ms/htf.py tetapi BELUM disambungkan ke pindai_b0, dan SL masih PENDEKATAN_B0.",
   "sumber_masukan": "pemicu/baseline_b0.json",
-  "tag": null
+  "tag": null,
+  "tahap_terakhir": "2026-07-31T19:34:44Z TAHAP 9 penanda MASUK"
 }

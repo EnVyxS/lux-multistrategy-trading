@@ -1,0 +1,84 @@
+run_id=30659603431 commit=bb943ec34af1e67fc165efa21c1ccabd2b979bef event=push
+2026-07-31T19:34:27Z TAHAP 0 checkout+siap MASUK
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root       145G   58G   88G  40% /
+2026-07-31T19:34:27Z TAHAP 0 SELESAI
+2026-07-31T19:34:27Z TAHAP 1 dependensi MASUK
+Python 3.11.15
+gh version 2.96.0 (2026-07-02)
+https://github.com/cli/cli/releases/tag/v2.96.0
+jq-1.7
+2026-07-31T19:34:43Z TAHAP 1 SELESAI
+2026-07-31T19:34:43Z TAHAP 2 baca masukan MASUK
+masukan: indeks=7 batas=3 min_rr=1.5 min_gap_r=1.0 fallback_rr=2.5 sumber=pemicu/baseline_b0.json
+2026-07-31T19:34:43Z TAHAP 2 SELESAI
+2026-07-31T19:34:43Z TAHAP 3 uji MASUK
+
+==================================== ERRORS ====================================
+_________________ ERROR collecting tests/test_antilookahead.py _________________
+ImportError while importing test module '/home/runner/work/lux-multistrategy-trading/lux-multistrategy-trading/tests/test_antilookahead.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_antilookahead.py:8: in <module>
+    from lux_ms.resample import (
+E   ModuleNotFoundError: No module named 'lux_ms'
+__________________ ERROR collecting tests/test_baseline_b0.py __________________
+ImportError while importing test module '/home/runner/work/lux-multistrategy-trading/lux-multistrategy-trading/tests/test_baseline_b0.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_baseline_b0.py:8: in <module>
+    from lux_ms import baseline_b0 as b0
+E   ModuleNotFoundError: No module named 'lux_ms'
+______________________ ERROR collecting tests/test_htf.py ______________________
+ImportError while importing test module '/home/runner/work/lux-multistrategy-trading/lux-multistrategy-trading/tests/test_htf.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_htf.py:7: in <module>
+    from lux_ms import htf as H
+E   ModuleNotFoundError: No module named 'lux_ms'
+___________________ ERROR collecting tests/test_statistik.py ___________________
+ImportError while importing test module '/home/runner/work/lux-multistrategy-trading/lux-multistrategy-trading/tests/test_statistik.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_statistik.py:6: in <module>
+    from lux_ms.pembagian import lipatan_walk_forward, purge_tumpang_tindih
+E   ModuleNotFoundError: No module named 'lux_ms'
+____________________ ERROR collecting tests/test_tangan.py _____________________
+ImportError while importing test module '/home/runner/work/lux-multistrategy-trading/lux-multistrategy-trading/tests/test_tangan.py'.
+Hint: make sure your test modules/packages have valid Python names.
+Traceback:
+/opt/hostedtoolcache/Python/3.11.15/x64/lib/python3.11/importlib/__init__.py:126: in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests/test_tangan.py:25: in <module>
+    from lux_ms.eksekusi import Biaya, Rencana, simulasi_trade
+E   ModuleNotFoundError: No module named 'lux_ms'
+=========================== short test summary info ============================
+ERROR tests/test_antilookahead.py
+ERROR tests/test_baseline_b0.py
+ERROR tests/test_htf.py
+ERROR tests/test_statistik.py
+ERROR tests/test_tangan.py
+!!!!!!!!!!!!!!!!!!! Interrupted: 5 errors during collection !!!!!!!!!!!!!!!!!!!!
+5 errors in 0.32s
+LULUS  tests.test_htf.test_tabel_skor_lengkap
+
+=== LULUS 58 | GAGAL 0 ===
+kode_pytest=2 kode_plain=0
+2026-07-31T19:34:44Z TAHAP 8 sisa cakram MASUK
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/root       145G   58G   87G  40% /
+0
+2026-07-31T19:34:44Z TAHAP 9 penanda MASUK
