@@ -7,8 +7,16 @@ name: baseline_b0
 # `lux_ms.dataset.gerbang_sidik` (saksi 2, hasil ukur sesi ini). Bila salah satu
 # gagal, job gagal dan tidak ada angka hasil yang ditulis.
 #
-# Masukan dibaca dari GITHUB_EVENT_PATH dengan jq, bukan dari interpolasi, supaya
-# tidak ada nilai operator yang menyusup ke dalam skrip shell.
+# PEMICU LEWAT PUSH (pola yang dipakai lux-ai-research/.github/workflows/
+# pecahan_serapan.yml): agen tidak punya alat memicu workflow_dispatch, jadi
+# jalan diminta dengan MENDORONG berkas pemicu/baseline_b0.json. Berkas itu
+# sekaligus menjadi catatan parameter yang diminta, dapat dibaca ulang dan
+# di-diff. Hasil dikembalikan dengan cara yang sama seperti repo riset: job
+# meng-commit reports/*.json ke cabang yang sama dengan `[skip ci]`, sehingga
+# hasilnya bisa dibaca lewat get_file_contents tanpa alat Actions apa pun.
+#
+# ANTI PEMICU-DIRI (padanan Aturan 33): alur ini TIDAK PERNAH menulis ke
+# pemicu/**. Yang di-commit hanya reports/**.
 #
 # CACAT YANG SUDAH DIPERBAIKI (jangan diulang): pola aset rilis yang TERUKUR
 # adalah `pecahan_<i>.partNN.tar` dan `pecahan_<i>_karantina.partNN.tar`, BUKAN
@@ -17,6 +25,9 @@ name: baseline_b0
 # gerbang cacah tar di bawah: nol tar = job GAGAL.
 
 on:
+  push:
+    paths:
+      - 'pemicu/baseline_b0.json'
   workflow_dispatch:
     inputs:
       indeks:
@@ -56,6 +67,8 @@ jobs:
       RUN_SERAPAN: "30396803601"
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v5
         with:
@@ -74,10 +87,49 @@ jobs:
           print("lingkungan sesuai: tanpa scipy, tanpa requests")
           PY
 
+      - name: Baca masukan (pemicu push atau workflow_dispatch)
+        run: |
+          set -euo pipefail
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            SUMBER="pemicu/baseline_b0.json"
+            test -f "$SUMBER" || { echo "GAGAL: $SUMBER tidak ada padahal alur dipicu push" >&2; exit 1; }
+            echo "--- isi $SUMBER ---"
+            cat "$SUMBER"
+            INDEKS=$(jq -r '.indeks' "$SUMBER")
+            BATAS=$(jq -r '.batas_simbol' "$SUMBER")
+            MIN_RR=$(jq -r '.min_rr' "$SUMBER")
+            MIN_GAP=$(jq -r '.min_gap_r' "$SUMBER")
+            FB=$(jq -r '.fallback_rr' "$SUMBER")
+          else
+            SUMBER="workflow_dispatch"
+            INDEKS=$(jq -r '.inputs.indeks' "$GITHUB_EVENT_PATH")
+            BATAS=$(jq -r '.inputs.batas_simbol' "$GITHUB_EVENT_PATH")
+            MIN_RR=$(jq -r '.inputs.min_rr' "$GITHUB_EVENT_PATH")
+            MIN_GAP=$(jq -r '.inputs.min_gap_r' "$GITHUB_EVENT_PATH")
+            FB=$(jq -r '.inputs.fallback_rr' "$GITHUB_EVENT_PATH")
+          fi
+          case "$INDEKS" in 0|1|2|3|4|5|6|7) ;; *) echo "indeks di luar 0..7: $INDEKS" >&2; exit 1 ;; esac
+          case "$BATAS" in ''|*[!0-9]*) echo "batas_simbol harus bilangan bulat >= 0: $BATAS" >&2; exit 1 ;; esac
+          for pasang in "min_rr=$MIN_RR" "min_gap_r=$MIN_GAP" "fallback_rr=$FB"; do
+            nilai="${pasang#*=}"
+            case "$nilai" in
+              ''|null) echo "GAGAL: ${pasang%%=*} kosong. Nilai legacy BELUM DIUKUR dan tidak boleh ditebak oleh alur." >&2; exit 1 ;;
+            esac
+            printf '%s' "$nilai" | grep -Eq '^[0-9]+(\.[0-9]+)?$' || { echo "GAGAL: ${pasang%%=*} bukan angka desimal: $nilai" >&2; exit 1; }
+          done
+          echo "SUMBER_MASUKAN=$SUMBER" >> "$GITHUB_ENV"
+          echo "INDEKS=$INDEKS" >> "$GITHUB_ENV"
+          echo "BATAS=$BATAS" >> "$GITHUB_ENV"
+          echo "MIN_RR=$MIN_RR" >> "$GITHUB_ENV"
+          echo "MIN_GAP=$MIN_GAP" >> "$GITHUB_ENV"
+          echo "FB=$FB" >> "$GITHUB_ENV"
+          echo "masukan: indeks=$INDEKS batas=$BATAS min_rr=$MIN_RR min_gap_r=$MIN_GAP fallback_rr=$FB sumber=$SUMBER"
+
       - name: Uji harness harus lulus SEBELUM data diunduh
         run: |
           set -euo pipefail
           pytest -q tests
+          python jalankan_uji.py
 
       - name: Cakram sebelum unduh
         run: df -h /
@@ -85,8 +137,6 @@ jobs:
       - name: Unduh aset rilis pecahan
         run: |
           set -euo pipefail
-          INDEKS=$(jq -r '.inputs.indeks' "$GITHUB_EVENT_PATH")
-          case "$INDEKS" in 0|1|2|3|4|5|6|7) ;; *) echo "indeks di luar 0..7: $INDEKS"; exit 1 ;; esac
           TAG="serapan-pecahan-${INDEKS}-${RUN_SERAPAN}"
           echo "tag=$TAG"
           if [ -n "${TOKEN_LINTAS:-}" ]; then
@@ -104,7 +154,6 @@ jobs:
             exit 1
           fi
           ls -l data/rilis
-          echo "INDEKS=$INDEKS" >> "$GITHUB_ENV"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
 
       - name: Gerbang cacah tar (nol tar = pola aset salah)
@@ -129,10 +178,8 @@ jobs:
       - name: Saksi 2 - gerbang_sidik, bongkar, dan ukur B0
         run: |
           set -euo pipefail
-          MIN_RR=$(jq -r '.inputs.min_rr' "$GITHUB_EVENT_PATH")
-          MIN_GAP=$(jq -r '.inputs.min_gap_r' "$GITHUB_EVENT_PATH")
-          FB=$(jq -r '.inputs.fallback_rr' "$GITHUB_EVENT_PATH")
-          BATAS=$(jq -r '.inputs.batas_simbol' "$GITHUB_EVENT_PATH")
+          mkdir -p reports
+          set +e
           python ukur_b0.py \
             --indeks "$INDEKS" \
             --akar-rilis data/rilis \
@@ -142,7 +189,13 @@ jobs:
             --min-gap-r "$MIN_GAP" \
             --fallback-rr "$FB" \
             --hapus-tar \
-            --keluaran "reports/b0_pecahan${INDEKS}_status.json"
+            --keluaran "reports/b0_pecahan${INDEKS}_status.json" > ukur.log 2>&1
+          KODE=$?
+          set -e
+          tail -c 40000 ukur.log > "reports/b0_pecahan${INDEKS}.log"
+          echo "KODE_UKUR=$KODE" >> "$GITHUB_ENV"
+          tail -n 40 ukur.log
+          exit $KODE
 
       - name: Cakram dan cacah parquet setelah bongkar
         if: always()
@@ -150,7 +203,7 @@ jobs:
           df -h / || true
           find data/parquet -name '*.parquet' 2>/dev/null | wc -l || true
 
-      - name: Tulis penanda jalan dan simpan laporan
+      - name: Tulis penanda jalan dan commit laporan
         if: always()
         run: |
           set -euo pipefail
@@ -165,6 +218,14 @@ jobs:
               "commit": os.environ.get("SHA_COMMIT"),
               "tag": os.environ.get("TAG"),
               "indeks": os.environ.get("INDEKS"),
+              "sumber_masukan": os.environ.get("SUMBER_MASUKAN"),
+              "kode_keluar_ukur": os.environ.get("KODE_UKUR"),
+              "parameter": {
+                  "batas_simbol": os.environ.get("BATAS"),
+                  "min_rr": os.environ.get("MIN_RR"),
+                  "min_gap_r": os.environ.get("MIN_GAP"),
+                  "fallback_rr": os.environ.get("FB"),
+              },
               "nilai_basi_yang_ditolak": {
                   "run": "30628719235",
                   "commit": "95021cda",
@@ -172,8 +233,9 @@ jobs:
               },
               "status_angka": (
                   "Isi reports/ hanya sah bila kedua saksi sidik LULUS. Angka B0 "
-                  "adalah BATAS ATAS: gerbang trendline_min_htf_score=3 belum "
-                  "diport dan SL memakai PENDEKATAN_B0."
+                  "masih BATAS ATAS: gerbang trendline_min_htf_score=3 sudah "
+                  "diport di lux_ms/htf.py tetapi BELUM disambungkan ke "
+                  "pindai_b0, dan SL masih PENDEKATAN_B0."
               ),
               "patokan": "EnVyxS/lux-multistrategy-trading",
           }
@@ -185,8 +247,11 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add reports
-          git commit -m "reports: laporan baseline_b0 pecahan ${INDEKS:-?} [skip ci]" || echo "tidak ada perubahan"
-          git push || echo "push gagal; laporan tetap ada di artefak"
+          git commit -m "reports: laporan baseline_b0 pecahan ${INDEKS:-?} run ${ID_RUN} [skip ci]" || echo "tidak ada perubahan"
+          for percobaan in 1 2 3 4; do
+            git pull --rebase --autostash && git push && break
+            sleep $((percobaan * 10))
+          done
 
       - uses: actions/upload-artifact@v4
         if: always()
