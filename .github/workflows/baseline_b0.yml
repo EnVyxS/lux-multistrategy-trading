@@ -7,22 +7,31 @@ name: baseline_b0
 # `lux_ms.dataset.gerbang_sidik` (saksi 2, hasil ukur sesi ini). Bila salah satu
 # gagal, job gagal dan tidak ada angka hasil yang ditulis.
 #
-# PEMICU LEWAT PUSH (pola yang dipakai lux-ai-research/.github/workflows/
-# pecahan_serapan.yml): agen tidak punya alat memicu workflow_dispatch, jadi
-# jalan diminta dengan MENDORONG berkas pemicu/baseline_b0.json. Berkas itu
-# sekaligus menjadi catatan parameter yang diminta, dapat dibaca ulang dan
-# di-diff. Hasil dikembalikan dengan cara yang sama seperti repo riset: job
-# meng-commit reports/*.json ke cabang yang sama dengan `[skip ci]`, sehingga
-# hasilnya bisa dibaca lewat get_file_contents tanpa alat Actions apa pun.
+# PEMICU LEWAT PUSH (pola lux-ai-research/.github/workflows/pecahan_serapan.yml):
+# agen tidak punya alat memicu workflow_dispatch, jadi jalan diminta dengan
+# MENDORONG pemicu/baseline_b0.json. Hasil dikembalikan sebagai commit ke
+# reports/ dengan `[skip ci]`, jadi bisa dibaca tanpa alat Actions apa pun.
 #
 # ANTI PEMICU-DIRI (padanan Aturan 33): alur ini TIDAK PERNAH menulis ke
 # pemicu/**. Yang di-commit hanya reports/**.
 #
-# CACAT YANG SUDAH DIPERBAIKI (jangan diulang): pola aset rilis yang TERUKUR
-# adalah `pecahan_<i>.partNN.tar` dan `pecahan_<i>_karantina.partNN.tar`, BUKAN
-# `serapan_pecahan_*`. Pola salah membuat `gh release download` hanya mengambil
-# SHA256SUMS lalu job berjalan seolah-olah baik-baik saja. Karena itu ada
-# gerbang cacah tar di bawah: nol tar = job GAGAL.
+# CACAT 1 (SUDAH DIPERBAIKI): pola aset rilis TERUKUR adalah
+# `pecahan_<i>.partNN.tar`, BUKAN `serapan_pecahan_*`. Pola salah membuat unduhan
+# hanya mengambil SHA256SUMS lalu job tampak sehat dengan nol data. Karena itu
+# ada gerbang cacah tar di bawah.
+#
+# CACAT 2 (SEBAB VERSI INI): run 30659250441 (commit 6fb147c3, dipicu push
+# pemicu) MATI sebelum TAG diset, dan yang ditinggalkannya hanya penanda dengan
+# `tag: null` dan `kode_keluar_ukur: null`. Tidak ada cara menentukan langkah
+# mana yang gagal, karena agen tidak punya alat pembaca log Actions. Itu cacat
+# KEMAMPUAN-DIAGNOSA, bukan hasil. Perbaikannya: setiap langkah menulis namanya
+# ke reports/b0_tahap.log, dan langkah unduh menyimpan keluarannya ke
+# reports/b0_unduh.log lalu baru gagal. Dengan begitu kegagalan berikutnya
+# meninggalkan bukti yang bisa dibaca lewat pembacaan berkas biasa.
+#
+# TERUKUR: EnVyxS/lux-ai-research bersifat PUBLIK (private=false), jadi
+# GITHUB_TOKEN bawaan cukup untuk mengunduh aset rilisnya. LINTAS_REPO_TOKEN
+# tetap didukung bila suatu saat repo itu diprivatkan.
 
 on:
   push:
@@ -65,18 +74,34 @@ jobs:
       SHA_COMMIT: ${{ github.sha }}
       REPO_SUMBER: EnVyxS/lux-ai-research
       RUN_SERAPAN: "30396803601"
+      TAHAP: reports/b0_tahap.log
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      - name: Tahap 0 - siapkan jejak tahap
+        run: |
+          set -euo pipefail
+          mkdir -p reports
+          {
+            echo "run_id=$ID_RUN commit=$SHA_COMMIT event=$GITHUB_EVENT_NAME"
+            echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 0 checkout+siap MASUK"
+          } > "$TAHAP"
+          df -h / >> "$TAHAP"
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 0 SELESAI" >> "$TAHAP"
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
-      - name: Pasang dependensi dan tegakkan batasan lingkungan
+      - name: Tahap 1 - dependensi dan batasan lingkungan
         run: |
           set -euo pipefail
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 1 dependensi MASUK" >> "$TAHAP"
+          python -V >> "$TAHAP"
+          gh --version >> "$TAHAP" 2>&1 || echo "gh tidak ada" >> "$TAHAP"
+          jq --version >> "$TAHAP" 2>&1 || echo "jq tidak ada" >> "$TAHAP"
           python -m pip install --upgrade pip
           pip install numpy pandas pyarrow pyyaml pytest
           python - <<'PY'
@@ -86,14 +111,15 @@ jobs:
                   raise SystemExit(f"PELANGGARAN LINGKUNGAN: {m} terpasang")
           print("lingkungan sesuai: tanpa scipy, tanpa requests")
           PY
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 1 SELESAI" >> "$TAHAP"
 
-      - name: Baca masukan (pemicu push atau workflow_dispatch)
+      - name: Tahap 2 - baca masukan (pemicu push atau workflow_dispatch)
         run: |
           set -euo pipefail
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 2 baca masukan MASUK" >> "$TAHAP"
           if [ "$GITHUB_EVENT_NAME" = "push" ]; then
             SUMBER="pemicu/baseline_b0.json"
             test -f "$SUMBER" || { echo "GAGAL: $SUMBER tidak ada padahal alur dipicu push" >&2; exit 1; }
-            echo "--- isi $SUMBER ---"
             cat "$SUMBER"
             INDEKS=$(jq -r '.indeks' "$SUMBER")
             BATAS=$(jq -r '.batas_simbol' "$SUMBER")
@@ -117,68 +143,98 @@ jobs:
             esac
             printf '%s' "$nilai" | grep -Eq '^[0-9]+(\.[0-9]+)?$' || { echo "GAGAL: ${pasang%%=*} bukan angka desimal: $nilai" >&2; exit 1; }
           done
-          echo "SUMBER_MASUKAN=$SUMBER" >> "$GITHUB_ENV"
-          echo "INDEKS=$INDEKS" >> "$GITHUB_ENV"
-          echo "BATAS=$BATAS" >> "$GITHUB_ENV"
-          echo "MIN_RR=$MIN_RR" >> "$GITHUB_ENV"
-          echo "MIN_GAP=$MIN_GAP" >> "$GITHUB_ENV"
-          echo "FB=$FB" >> "$GITHUB_ENV"
-          echo "masukan: indeks=$INDEKS batas=$BATAS min_rr=$MIN_RR min_gap_r=$MIN_GAP fallback_rr=$FB sumber=$SUMBER"
+          {
+            echo "SUMBER_MASUKAN=$SUMBER"
+            echo "INDEKS=$INDEKS"
+            echo "BATAS=$BATAS"
+            echo "MIN_RR=$MIN_RR"
+            echo "MIN_GAP=$MIN_GAP"
+            echo "FB=$FB"
+          } >> "$GITHUB_ENV"
+          echo "masukan: indeks=$INDEKS batas=$BATAS min_rr=$MIN_RR min_gap_r=$MIN_GAP fallback_rr=$FB sumber=$SUMBER" >> "$TAHAP"
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 2 SELESAI" >> "$TAHAP"
 
-      - name: Uji harness harus lulus SEBELUM data diunduh
+      - name: Tahap 3 - uji harness harus lulus SEBELUM data diunduh
         run: |
           set -euo pipefail
-          pytest -q tests
-          python jalankan_uji.py
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 3 uji MASUK" >> "$TAHAP"
+          set +e
+          pytest -q tests > uji_pytest.log 2>&1
+          KODE_PYTEST=$?
+          python jalankan_uji.py > uji_plain.log 2>&1
+          KODE_PLAIN=$?
+          set -e
+          tail -c 8000 uji_pytest.log >> "$TAHAP"
+          tail -n 3 uji_plain.log >> "$TAHAP"
+          echo "kode_pytest=$KODE_PYTEST kode_plain=$KODE_PLAIN" >> "$TAHAP"
+          if [ "$KODE_PYTEST" -ne 0 ] || [ "$KODE_PLAIN" -ne 0 ]; then
+            echo "GAGAL: uji harness tidak lulus; tidak ada data yang diunduh dan tidak ada angka yang ditulis." >&2
+            exit 1
+          fi
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 3 SELESAI" >> "$TAHAP"
 
-      - name: Cakram sebelum unduh
-        run: df -h /
-
-      - name: Unduh aset rilis pecahan
+      - name: Tahap 4 - unduh aset rilis pecahan
         run: |
           set -euo pipefail
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 4 unduh MASUK" >> "$TAHAP"
           TAG="serapan-pecahan-${INDEKS}-${RUN_SERAPAN}"
-          echo "tag=$TAG"
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "tag=$TAG repo_sumber=$REPO_SUMBER" >> "$TAHAP"
           if [ -n "${TOKEN_LINTAS:-}" ]; then
             export GH_TOKEN="$TOKEN_LINTAS"
-            echo "token: LINTAS_REPO_TOKEN"
+            echo "token: LINTAS_REPO_TOKEN" >> "$TAHAP"
           else
             export GH_TOKEN="$TOKEN_BAWAAN"
-            echo "token: GITHUB_TOKEN bawaan (hanya cukup bila $REPO_SUMBER publik)"
+            echo "token: GITHUB_TOKEN bawaan (cukup; repo sumber TERUKUR publik)" >> "$TAHAP"
           fi
           mkdir -p data/rilis
-          gh release view "$TAG" --repo "$REPO_SUMBER" --json assets --jq '.assets[] | [.name, .size] | @tsv'
-          if ! gh release download "$TAG" --repo "$REPO_SUMBER" --dir data/rilis \
-              --pattern "pecahan_${INDEKS}.part*.tar" --pattern 'SHA256SUMS' --clobber; then
-            echo "GAGAL UNDUH: bila $REPO_SUMBER privat, sediakan secret LINTAS_REPO_TOKEN (scope repo). Tidak ada jalur 'anggap benar'." >&2
+          set +e
+          gh release view "$TAG" --repo "$REPO_SUMBER" --json assets --jq '.assets[] | [.name, .size] | @tsv' > unduh.log 2>&1
+          KODE_LIHAT=$?
+          gh release download "$TAG" --repo "$REPO_SUMBER" --dir data/rilis \
+            --pattern "pecahan_${INDEKS}.part*.tar" --pattern 'SHA256SUMS' --clobber >> unduh.log 2>&1
+          KODE_UNDUH=$?
+          set -e
+          tail -c 30000 unduh.log > reports/b0_unduh.log
+          {
+            echo "kode_lihat=$KODE_LIHAT kode_unduh=$KODE_UNDUH"
+            ls -l data/rilis 2>&1 || true
+            df -h / || true
+          } >> "$TAHAP"
+          if [ "$KODE_LIHAT" -ne 0 ] || [ "$KODE_UNDUH" -ne 0 ]; then
+            echo "GAGAL UNDUH. Lihat reports/b0_unduh.log. Tidak ada jalur 'anggap benar'." >&2
             exit 1
           fi
-          ls -l data/rilis
-          echo "TAG=$TAG" >> "$GITHUB_ENV"
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 4 SELESAI" >> "$TAHAP"
 
-      - name: Gerbang cacah tar (nol tar = pola aset salah)
+      - name: Tahap 5 - gerbang cacah tar (nol tar = pola aset salah)
         run: |
           set -euo pipefail
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 5 gerbang tar MASUK" >> "$TAHAP"
           CACAH=$(find data/rilis -maxdepth 1 -name 'pecahan_*.tar' | wc -l)
-          echo "cacah tar terunduh: $CACAH"
+          echo "cacah_tar=$CACAH" >> "$TAHAP"
           if [ "$CACAH" -lt 1 ]; then
-            echo "GAGAL: tidak ada tar terunduh; pola aset tidak cocok. Bandingkan dengan daftar aset yang dicetak di langkah sebelumnya." >&2
+            echo "GAGAL: tidak ada tar terunduh; pola aset tidak cocok. Bandingkan dengan daftar aset di reports/b0_unduh.log." >&2
             exit 1
           fi
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 5 SELESAI" >> "$TAHAP"
 
-      - name: Saksi 1 - sha256sum -c SHA256SUMS
+      - name: Tahap 6 - saksi 1, sha256sum -c SHA256SUMS
         run: |
           set -euo pipefail
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 6 saksi 1 MASUK" >> "$TAHAP"
           cd data/rilis
           test -f SHA256SUMS || { echo "SHA256SUMS tidak ada"; exit 1; }
           cat SHA256SUMS
-          sha256sum -c --ignore-missing SHA256SUMS
-          sha256sum SHA256SUMS
+          sha256sum -c --ignore-missing SHA256SUMS | tee -a "../../$TAHAP"
+          sha256sum SHA256SUMS >> "../../$TAHAP"
+          cd ../..
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 6 SELESAI" >> "$TAHAP"
 
-      - name: Saksi 2 - gerbang_sidik, bongkar, dan ukur B0
+      - name: Tahap 7 - saksi 2, gerbang_sidik, bongkar, dan ukur B0
         run: |
           set -euo pipefail
-          mkdir -p reports
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 7 ukur MASUK" >> "$TAHAP"
           set +e
           python ukur_b0.py \
             --indeks "$INDEKS" \
@@ -194,23 +250,30 @@ jobs:
           set -e
           tail -c 40000 ukur.log > "reports/b0_pecahan${INDEKS}.log"
           echo "KODE_UKUR=$KODE" >> "$GITHUB_ENV"
+          echo "kode_ukur=$KODE" >> "$TAHAP"
           tail -n 40 ukur.log
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 7 SELESAI kode=$KODE" >> "$TAHAP"
           exit $KODE
 
-      - name: Cakram dan cacah parquet setelah bongkar
+      - name: Tahap 8 - cakram dan cacah parquet setelah bongkar
         if: always()
         run: |
-          df -h / || true
-          find data/parquet -name '*.parquet' 2>/dev/null | wc -l || true
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 8 sisa cakram MASUK" >> "$TAHAP" || true
+          df -h / >> "$TAHAP" 2>&1 || true
+          find data/parquet -name '*.parquet' 2>/dev/null | wc -l >> "$TAHAP" || true
 
-      - name: Tulis penanda jalan dan commit laporan
+      - name: Tahap 9 - tulis penanda jalan dan commit laporan
         if: always()
         run: |
           set -euo pipefail
+          echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) TAHAP 9 penanda MASUK" >> "$TAHAP" || true
           python - <<'PY'
           import json, os, pathlib
           p = pathlib.Path("reports")
           p.mkdir(parents=True, exist_ok=True)
+          jejak = p / "b0_tahap.log"
+          baris = jejak.read_text(encoding="utf-8", errors="replace").splitlines() if jejak.exists() else []
+          tahap = [b for b in baris if " TAHAP " in b]
           isi = {
               "bukan_bukti": False,
               "alur": "baseline_b0",
@@ -220,6 +283,8 @@ jobs:
               "indeks": os.environ.get("INDEKS"),
               "sumber_masukan": os.environ.get("SUMBER_MASUKAN"),
               "kode_keluar_ukur": os.environ.get("KODE_UKUR"),
+              "tahap_terakhir": tahap[-1] if tahap else None,
+              "cacah_baris_jejak": len(baris),
               "parameter": {
                   "batas_simbol": os.environ.get("BATAS"),
                   "min_rr": os.environ.get("MIN_RR"),
