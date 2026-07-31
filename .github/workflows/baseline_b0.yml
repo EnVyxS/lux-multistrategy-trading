@@ -9,6 +9,12 @@ name: baseline_b0
 #
 # Masukan dibaca dari GITHUB_EVENT_PATH dengan jq, bukan dari interpolasi, supaya
 # tidak ada nilai operator yang menyusup ke dalam skrip shell.
+#
+# CACAT YANG SUDAH DIPERBAIKI (jangan diulang): pola aset rilis yang TERUKUR
+# adalah `pecahan_<i>.partNN.tar` dan `pecahan_<i>_karantina.partNN.tar`, BUKAN
+# `serapan_pecahan_*`. Pola salah membuat `gh release download` hanya mengambil
+# SHA256SUMS lalu job berjalan seolah-olah baik-baik saja. Karena itu ada
+# gerbang cacah tar di bawah: nol tar = job GAGAL.
 
 on:
   workflow_dispatch:
@@ -91,7 +97,9 @@ jobs:
             echo "token: GITHUB_TOKEN bawaan (hanya cukup bila $REPO_SUMBER publik)"
           fi
           mkdir -p data/rilis
-          if ! gh release download "$TAG" --repo "$REPO_SUMBER" --dir data/rilis --pattern 'serapan_pecahan_*' --pattern 'SHA256SUMS' --clobber; then
+          gh release view "$TAG" --repo "$REPO_SUMBER" --json assets --jq '.assets[] | [.name, .size] | @tsv'
+          if ! gh release download "$TAG" --repo "$REPO_SUMBER" --dir data/rilis \
+              --pattern "pecahan_${INDEKS}.part*.tar" --pattern 'SHA256SUMS' --clobber; then
             echo "GAGAL UNDUH: bila $REPO_SUMBER privat, sediakan secret LINTAS_REPO_TOKEN (scope repo). Tidak ada jalur 'anggap benar'." >&2
             exit 1
           fi
@@ -99,13 +107,23 @@ jobs:
           echo "INDEKS=$INDEKS" >> "$GITHUB_ENV"
           echo "TAG=$TAG" >> "$GITHUB_ENV"
 
+      - name: Gerbang cacah tar (nol tar = pola aset salah)
+        run: |
+          set -euo pipefail
+          CACAH=$(find data/rilis -maxdepth 1 -name 'pecahan_*.tar' | wc -l)
+          echo "cacah tar terunduh: $CACAH"
+          if [ "$CACAH" -lt 1 ]; then
+            echo "GAGAL: tidak ada tar terunduh; pola aset tidak cocok. Bandingkan dengan daftar aset yang dicetak di langkah sebelumnya." >&2
+            exit 1
+          fi
+
       - name: Saksi 1 - sha256sum -c SHA256SUMS
         run: |
           set -euo pipefail
           cd data/rilis
           test -f SHA256SUMS || { echo "SHA256SUMS tidak ada"; exit 1; }
           cat SHA256SUMS
-          sha256sum -c SHA256SUMS
+          sha256sum -c --ignore-missing SHA256SUMS
           sha256sum SHA256SUMS
 
       - name: Saksi 2 - gerbang_sidik, bongkar, dan ukur B0
