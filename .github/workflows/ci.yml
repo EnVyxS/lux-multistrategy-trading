@@ -1,0 +1,93 @@
+name: ci
+
+# Dipasang PALING AKHIR agar jalan pertama kali sudah atas pohon berkas LENGKAP.
+# paths-ignore mengikuti kebiasaan repo riset: dokumen tidak memicu CI.
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - 'journal/**'
+      - 'decisions/**'
+      - 'hipotesis/**'
+      - 'reports/**'
+      - '**/*.md'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  uji:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Pasang pustaka (TANPA scipy, TANPA requests)
+        run: |
+          python -m pip install --upgrade pip
+          pip install numpy pandas pyarrow pyyaml pytest
+          python - <<'PY'
+          import importlib
+          for m in ("scipy", "requests"):
+              try:
+                  importlib.import_module(m)
+              except ImportError:
+                  print(f"OK: {m} tidak terpasang")
+              else:
+                  raise SystemExit(f"PELANGGARAN LINGKUNGAN: {m} terpasang")
+          PY
+
+      - name: Gerbang 1 + Gerbang 2 (pytest)
+        id: pytest
+        run: pytest -q tests | tee reports_pytest.txt
+
+      - name: Pelari polos harus sepakat dengan pytest
+        run: python jalankan_uji.py | tee reports_polos.txt
+
+      - name: Tulis reports/ci_terakhir.json
+        if: always()
+        run: |
+          mkdir -p reports
+          python - <<'PY'
+          import json, os, re, pathlib
+          polos = pathlib.Path("reports_polos.txt")
+          teks = polos.read_text() if polos.exists() else ""
+          m = re.search(r"=== LULUS (\d+) \| GAGAL (\d+) ===", teks)
+          data = {
+              "bacaan_ci_ke": 85,
+              "run_id": os.environ.get("GITHUB_RUN_ID"),
+              "commit": os.environ.get("GITHUB_SHA"),
+              "lulus": int(m.group(1)) if m else None,
+              "gagal": int(m.group(2)) if m else None,
+              "status_angka": "TERUKUR di CI" if m else "BELUM DIUKUR",
+              "patokan": "EnVyxS/lux-multistrategy-trading",
+              "catatan": "nilai BASI yang WAJIB DITOLAK: run 30628719235, commit 95021cda, blob fedd1e89",
+          }
+          pathlib.Path("reports/ci_terakhir.json").write_text(
+              json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+          )
+          print(json.dumps(data, ensure_ascii=False))
+          PY
+
+      - name: Simpan laporan sebagai artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: laporan-ci
+          path: |
+            reports/ci_terakhir.json
+            reports_pytest.txt
+            reports_polos.txt
+
+      - name: Commit reports/ci_terakhir.json (tidak memicu CI lagi)
+        if: always()
+        run: |
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add reports/ci_terakhir.json
+          git diff --staged --quiet || git commit -m 'ci: reports/ci_terakhir.json [skip ci]'
+          git push || true
