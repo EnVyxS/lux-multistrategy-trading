@@ -10,6 +10,7 @@ MODUL = [
     "tests.test_antilookahead",
     "tests.test_statistik",
     "tests.test_baseline_b0",
+    "tests.test_htf",
 ]
 
 lulus = gagal = 0
