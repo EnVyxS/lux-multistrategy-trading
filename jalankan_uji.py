@@ -1,9 +1,19 @@
-"""Pelari uji minimal (sandbox tanpa pytest). Di CI, pytest yang dipakai."""
+"""Pelari uji polos (saksi ke-2 di samping pytest).
+
+Kedua saksi WAJIB sepakat. Sebelum perbaikan ini pelari polos menyisipkan jalur
+sandbox keras "/data/ms", yang tidak ada di runner; ia tetap lolos di runner
+hanya karena cwd kebetulan akar repo. Jalur keras itu menyembunyikan beda
+lingkungan, jadi diganti dengan akar yang dihitung dari lokasi berkas ini.
+"""
+
 import importlib
+import os
 import sys
 import traceback
 
-sys.path.insert(0, "/data/ms")
+AKAR = os.path.dirname(os.path.abspath(__file__))
+if AKAR not in sys.path:
+    sys.path.insert(0, AKAR)
 
 MODUL = [
     "tests.test_tangan",
@@ -12,6 +22,8 @@ MODUL = [
     "tests.test_baseline_b0",
     "tests.test_htf",
 ]
+
+print(f"akar sys.path: {AKAR}")
 
 lulus = gagal = 0
 for nama in MODUL:
