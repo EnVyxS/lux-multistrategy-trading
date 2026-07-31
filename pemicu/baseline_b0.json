@@ -1,7 +1,8 @@
 {
   "catatan": "Berkas pemicu. Mendorong berkas ini memicu .github/workflows/baseline_b0.yml lewat 'on: push: paths'. Pola ini disalin dari EnVyxS/lux-ai-research .github/workflows/pecahan_serapan.yml, yang menulis di komentarnya sendiri bahwa agen tidak punya alat memicu workflow_dispatch. Hasil dikembalikan sebagai commit ke reports/ dengan [skip ci], jadi bisa dibaca lewat pembacaan berkas biasa.",
-  "permintaan_ke": 1,
-  "diminta_pada_utc": "2026-07-31T19:30:00Z",
+  "permintaan_ke": 2,
+  "diminta_pada_utc": "2026-07-31T19:40:00Z",
+  "sebab_permintaan_ulang": "Permintaan #1 TERBUKTI memicu jalan (run 30659250441, sumber_masukan=pemicu/baseline_b0.json), tetapi jalan itu mati sebelum TAG diset dan hanya meninggalkan tag=null serta kode_keluar_ukur=null. Langkah yang gagal TIDAK DAPAT DITENTUKAN dari bukti yang ada, dan tidak boleh ditebak. Alur v4 kini menulis reports/b0_tahap.log per langkah dan reports/b0_unduh.log, supaya kegagalan berikutnya menyebut tahapnya sendiri.",
   "indeks": "7",
   "batas_simbol": "3",
   "min_rr": "1.5",
@@ -9,6 +10,7 @@
   "fallback_rr": "2.5",
   "status_parameter": "min_rr / min_gap_r / fallback_rr di sini adalah NILAI UJI YANG DIPRA-REGISTRASI, BUKAN nilai legacy. Nilai legacy per-strategi (_min_rr_eff, settings.min_tp_gap_r, _fallback_rr) masih BELUM DIUKUR dan tidak boleh ditebak.",
   "status_hasil": "Angka apa pun dari jalan ini adalah BATAS ATAS: gerbang trendline_min_htf_score=3 sudah diport di lux_ms/htf.py tetapi BELUM disambungkan ke pindai_b0, dan SL masih PENDEKATAN_B0.",
+  "terukur_visibilitas_repo_sumber": "EnVyxS/lux-ai-research private=false (publik), jadi GITHUB_TOKEN bawaan cukup; hipotesis 'gagal karena repo privat' MATI.",
   "nilai_basi_yang_ditolak": {
     "run": "30628719235",
     "commit": "95021cda",
