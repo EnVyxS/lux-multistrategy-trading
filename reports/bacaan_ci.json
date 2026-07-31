@@ -1,0 +1,5 @@
+{
+  "berikutnya": 87,
+  "terakhir_dipakai": 86,
+  "catatan": "Bacaan 85 TERPAKAI dua kali (run 30658939176 dan 30659601549) karena ci.yml v1 menulis pencacah mati. Kedua bacaan itu berstatus TERCEMAR: label 'TERUKUR di CI' dipasang padahal saksi pytest gagal impor."
+}

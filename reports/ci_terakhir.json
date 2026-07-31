@@ -1,10 +1,22 @@
 {
-  "bacaan_ci_ke": 85,
-  "run_id": "30659841829",
-  "commit": "3f34aca50a2ce330abd5f5379e03246110a0879c",
+  "bacaan_ci_ke": 86,
+  "run_id": "30659916573",
+  "commit": "d051e1a43ce66ebc43650530bd60e2103f53bd62",
+  "saksi_pytest": {
+    "kode_keluar": 0,
+    "lulus": 58,
+    "gagal": null,
+    "error_pengumpulan": null
+  },
+  "saksi_polos": {
+    "kode_keluar": 0,
+    "lulus": 58,
+    "gagal": 0
+  },
+  "sepakat": true,
   "lulus": 58,
   "gagal": 0,
-  "status_angka": "TERUKUR di CI",
+  "status_angka": "TERUKUR di CI (kedua saksi sepakat)",
   "patokan": "EnVyxS/lux-multistrategy-trading",
   "catatan": "nilai BASI yang WAJIB DITOLAK: run 30628719235, commit 95021cda, blob fedd1e89"
 }
